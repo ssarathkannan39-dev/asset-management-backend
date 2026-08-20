@@ -1,15 +1,21 @@
 const express = require('express');
-const validate = require('../middleware/validate');
-const { requireAuth } = require('../middleware/auth');
-const { createMaintenanceSchema, updateMaintenanceSchema } = require('../utils/schemas');
-const maintenanceController = require('../controllers/maintenanceController');
-
 const router = express.Router();
+const {
+  getMaintenanceRecords,
+  getMaintenanceRecord,
+  createMaintenanceRecord,
+  updateMaintenanceRecord,
+  deleteMaintenanceRecord,
+} = require('../controllers/maintenanceController');
+
+const { requireAuth } = require('../middleware/auth');
 
 router.use(requireAuth);
 
-router.get('/', maintenanceController.list);
-router.post('/', validate(createMaintenanceSchema), maintenanceController.create);
-router.put('/:id', validate(updateMaintenanceSchema), maintenanceController.update);
+router.get('/', getMaintenanceRecords);
+router.get('/:id', getMaintenanceRecord);
+router.post('/', createMaintenanceRecord);
+router.patch('/:id', updateMaintenanceRecord);
+router.delete('/:id', deleteMaintenanceRecord);
 
 module.exports = router;

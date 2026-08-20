@@ -20,5 +20,6 @@ router.post('/login', authLimiter, validate(loginSchema), authController.login);
 router.post('/refresh', authController.refresh);
 router.post('/logout', requireAuth, authController.logout);
 router.get('/me', requireAuth, authController.me);
+router.patch('/me', requireAuth, authController.updateProfile);
 
 module.exports = router;

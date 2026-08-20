@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const { signAccessToken, signRefreshToken, verifyRefreshToken } = require('../utils/tokens');
-const { UnauthorizedError, ConflictError } = require('../utils/errors');
+const { UnauthorizedError, ConflictError, ValidationError } = require('../utils/errors');
 const { recordAudit } = require('../utils/audit');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -86,4 +86,28 @@ const me = asyncHandler(async (req, res) => {
   res.json({ user: req.user.toSafeJSON() });
 });
 
-module.exports = { register, login, refresh, logout, me };
+const updateProfile = asyncHandler(async (req, res) => {
+  const { name, email, currentPassword, newPassword } = req.body;
+  if (name !== undefined && (typeof name !== 'string' || name.trim().length < 2)) {
+    throw new ValidationError('Name must be at least 2 characters');
+  }
+  if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new ValidationError('A valid email is required');
+  }
+  if (newPassword !== undefined) {
+    if (!currentPassword) throw new ValidationError('Current password is required');
+    if (newPassword.length < 8) throw new ValidationError('New password must be at least 8 characters');
+    const userWithPassword = await User.findById(req.user._id).select('+password');
+    if (!(await userWithPassword.comparePassword(currentPassword))) {
+      throw new UnauthorizedError('Current password is incorrect');
+    }
+    req.user.password = newPassword;
+    req.user.refreshTokenVersion += 1;
+  }
+  if (name !== undefined) req.user.name = name.trim();
+  if (email !== undefined) req.user.email = email.toLowerCase().trim();
+  await req.user.save();
+  res.json({ user: req.user.toSafeJSON() });
+});
+
+module.exports = { register, login, refresh, logout, me, updateProfile };

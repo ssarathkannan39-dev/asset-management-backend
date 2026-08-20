@@ -1,96 +1,150 @@
 const Assignment = require('../models/Assignment');
-const Asset = require('../models/Asset');
-const { NotFoundError, ConflictError } = require('../utils/errors');
-const { recordAudit } = require('../utils/audit');
-const asyncHandler = require('../utils/asyncHandler');
+const Asset = require('../models/Asset'); // ASSUMPTION: path/name of your Asset model
 
-// GET /api/assignments?status=active&page=&limit=
-const list = asyncHandler(async (req, res) => {
-  const { status, page = 1, limit = 20 } = req.query;
-  const filter = {};
-  if (status) filter.status = status;
+// GET /api/assignments?status=assigned&search=john&page=1&limit=20
+exports.getAssignments = async (req, res, next) => {
+  try {
+    const { status, search, page = 1, limit = 20 } = req.query;
+    const query = {};
 
-  const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    if (status && status !== 'all') {
+      if (status === 'overdue') {
+        query.status = { $ne: 'returned' };
+        query.dueDate = { $lt: new Date() };
+      } else {
+        query.status = status;
+      }
+    }
 
-  const [items, total] = await Promise.all([
-    Assignment.find(filter)
-      .sort('-assignedDate')
-      .skip((pageNum - 1) * limitNum)
-      .limit(limitNum)
-      .populate({ path: 'asset', select: 'assetTag name category status' }),
-    Assignment.countDocuments(filter),
-  ]);
+    if (search) {
+      query.$or = [
+        { 'assignedTo.name': { $regex: search, $options: 'i' } },
+        { 'assignedTo.email': { $regex: search, $options: 'i' } },
+        { 'assignedTo.department': { $regex: search, $options: 'i' } },
+      ];
+    }
 
-  res.json({ items, pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) } });
-});
+    const skip = (Number(page) - 1) * Number(limit);
 
-// Assign an available asset to a person
-const create = asyncHandler(async (req, res) => {
-  const { asset: assetId, assignedTo, conditionOnAssign, notes } = req.body;
+    const [items, total] = await Promise.all([
+      Assignment.find(query)
+        .populate('asset', 'name assetTag category status')
+        .populate('checkedOutBy', 'name')
+        .populate('checkedInBy', 'name')
+        .sort({ checkoutDate: -1 })
+        .skip(skip)
+        .limit(Number(limit)),
+      Assignment.countDocuments(query),
+    ]);
 
-  const asset = await Asset.findById(assetId);
-  if (!asset) throw new NotFoundError('Asset not found');
-  if (asset.status !== 'available') {
-    throw new ConflictError(`Asset is currently "${asset.status}" and cannot be assigned`);
+    // Normalize computed "overdue" status for display without mutating stale docs.
+    const data = items.map((doc) => {
+      const obj = doc.toObject();
+      obj.status = doc.computeStatus();
+      return obj;
+    });
+
+    res.json({
+      data,
+      pagination: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    next(err);
   }
+};
 
-  const assignment = await Assignment.create({
-    asset: asset._id,
-    assignedTo,
-    conditionOnAssign,
-    notes,
-    assignedBy: req.user._id, 
-  });
+// GET /api/assignments/:id
+exports.getAssignment = async (req, res, next) => {
+  try {
+    const assignment = await Assignment.findById(req.params.id)
+      .populate('asset')
+      .populate('checkedOutBy', 'name')
+      .populate('checkedInBy', 'name');
 
-  asset.status = 'assigned';
-  asset.currentAssignment = assignment._id;
-  await asset.save();
+    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+    res.json(assignment);
+  } catch (err) {
+    next(err);
+  }
+};
 
-  await recordAudit({
-    req,
-    action: 'assign',
-    entityType: 'Assignment',
-    entityId: assignment._id,
-    entityLabel: `${asset.assetTag} -> ${assignedTo.name}`,
-    changes: { after: assignment.toObject() },
-  });
+// POST /api/assignments/checkout
+// body: { assetId, assignedTo: { name, email, department }, dueDate, conditionOut, notes }
+exports.checkoutAsset = async (req, res, next) => {
+  try {
+    const { assetId, assignedTo, dueDate, conditionOut, notes } = req.body;
 
-  res.status(201).json({ assignment });
-});
+    if (!assetId || !assignedTo?.name) {
+      return res.status(400).json({ message: 'assetId and assignedTo.name are required' });
+    }
 
-// Mark an active assignment as returned and free up the asset
-const markReturned = asyncHandler(async (req, res) => {
-  const { conditionOnReturn, notes } = req.body;
+    const asset = await Asset.findById(assetId);
+    if (!asset) return res.status(404).json({ message: 'Asset not found' });
 
-  const assignment = await Assignment.findById(req.params.id);
-  if (!assignment) throw new NotFoundError('Assignment not found');
-  if (assignment.status === 'returned') throw new ConflictError('This assignment was already returned');
+    if (asset.status && asset.status !== 'available') {
+      return res.status(409).json({ message: `Asset is currently "${asset.status}" and cannot be checked out` });
+    }
 
-  assignment.status = 'returned';
-  assignment.returnDate = new Date();
-  assignment.conditionOnReturn = conditionOnReturn;
-  if (notes) assignment.notes = `${assignment.notes ? assignment.notes + '\n' : ''}${notes}`;
-  assignment.returnedBy = req.user._id;
-  await assignment.save();
+    const assignment = await Assignment.create({
+      asset: assetId,
+      assignedTo,
+      checkedOutBy: req.user?._id,
+      dueDate: dueDate || undefined,
+      conditionOut,
+      notes,
+      status: 'assigned',
+    });
 
-  const asset = await Asset.findById(assignment.asset);
-  if (asset) {
-    asset.status = 'available';
-    asset.currentAssignment = null;
+    // Reflect the checkout on the asset itself.
+    asset.status = 'assigned';
+    asset.currentAssignment = assignment._id;
     await asset.save();
+
+    const populated = await assignment.populate('asset', 'name assetTag category status');
+    res.status(201).json(populated);
+  } catch (err) {
+    next(err);
   }
+};
 
-  await recordAudit({
-    req,
-    action: 'return',
-    entityType: 'Assignment',
-    entityId: assignment._id,
-    entityLabel: asset ? asset.assetTag : String(assignment.asset),
-    changes: { after: assignment.toObject() },
-  });
+// PATCH /api/assignments/:id/checkin
+// body: { conditionIn, notes }
+exports.checkinAsset = async (req, res, next) => {
+  try {
+    const { conditionIn, notes } = req.body;
 
-  res.json({ assignment });
-});
+    const assignment = await Assignment.findById(req.params.id).populate('asset');
+    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+    if (assignment.status === 'returned') {
+      return res.status(409).json({ message: 'This assignment has already been checked in' });
+    }
 
-module.exports = { list, create, markReturned };
+    assignment.status = 'returned';
+    assignment.checkinDate = new Date();
+    assignment.checkedInBy = req.user?._id;
+    if (conditionIn) assignment.conditionIn = conditionIn;
+    if (notes) assignment.notes = notes;
+    await assignment.save();
+
+    if (assignment.asset) {
+      assignment.asset.status = 'available';
+      assignment.asset.currentAssignment = null;
+      await assignment.asset.save();
+    }
+
+    res.json(assignment);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /api/assignments/:id  (correcting a mis-logged entry, not a normal check-in)
+exports.deleteAssignment = async (req, res, next) => {
+  try {
+    const assignment = await Assignment.findByIdAndDelete(req.params.id);
+    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+    res.json({ message: 'Assignment deleted' });
+  } catch (err) {
+    next(err);
+  }
+};

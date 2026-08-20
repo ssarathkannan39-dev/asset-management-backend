@@ -8,6 +8,11 @@ const assignmentRoutes = require('./routes/assignmentRoutes');
 const maintenanceRoutes = require('./routes/maintenanceRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
+const accessoryRoutes = require('./routes/accessoryRoutes');
+const consumableRoutes = require('./routes/consumableRoutes');
+const licenseRoutes = require('./routes/licenseRoutes');
+const documentListRoutes = require('./routes/documentListRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -18,7 +23,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.static('uploads'));
+app.use('/uploads', express.static(require('path').resolve(__dirname, 'uploads')));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
@@ -30,6 +35,11 @@ app.use('/api/assignments', assignmentRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/audit-logs', auditRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/accessories', accessoryRoutes);
+app.use('/api/consumables', consumableRoutes);
+app.use('/api/licenses', licenseRoutes);
+app.use('/api/documents', documentListRoutes);
+app.use('/api/reports', reportRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

@@ -1,7 +1,7 @@
 const QRCode = require('qrcode');
 const Asset = require('../models/Asset');
 const Assignment = require('../models/Assignment');
-const MaintenanceRecord = require('../models/MaintenanceRecord');
+const Maintenance = require('../models/Maintenance');
 const { nextAssetTag } = require('../utils/assetTag');
 const { recordAudit } = require('../utils/audit');
 const { NotFoundError, ConflictError } = require('../utils/errors');
@@ -24,7 +24,7 @@ const list = asyncHandler(async (req, res) => {
       .sort(sort)
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
-      .populate({ path: 'currentAssignment', select: 'assignedTo assignedDate' }),
+      .populate({ path: 'currentAssignment', select: 'assignedTo checkoutDate dueDate status' }),
     Asset.countDocuments(filter),
   ]);
 
@@ -39,8 +39,8 @@ const getById = asyncHandler(async (req, res) => {
   if (!asset) throw new NotFoundError('Asset not found');
 
   const [assignmentHistory, maintenanceHistory] = await Promise.all([
-    Assignment.find({ asset: asset._id }).sort('-assignedDate'),
-    MaintenanceRecord.find({ asset: asset._id }).sort('-createdAt'),
+    Assignment.find({ asset: asset._id }).sort('-checkoutDate'),
+    Maintenance.find({ asset: asset._id }).sort('-createdAt'),
   ]);
 
   res.json({ asset, assignmentHistory, maintenanceHistory });
@@ -95,7 +95,7 @@ const remove = asyncHandler(async (req, res) => {
 
   await asset.deleteOne();
   await Assignment.deleteMany({ asset: asset._id });
-  await MaintenanceRecord.deleteMany({ asset: asset._id });
+  await Maintenance.deleteMany({ asset: asset._id });
 
   await recordAudit({ req, action: 'delete', entityType: 'Asset', entityId: asset._id, entityLabel: asset.assetTag, changes: { before: asset.toObject() } });
 
