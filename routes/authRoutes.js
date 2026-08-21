@@ -1,7 +1,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const validate = require('../middleware/validate');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const { registerSchema, loginSchema } = require('../utils/schemas');
 const authController = require('../controllers/authController');
 
@@ -15,7 +15,7 @@ const authLimiter = rateLimit({
   message: { error: 'TooManyRequests', message: 'Too many attempts, please try again shortly' },
 });
 
-router.post('/register', authLimiter, validate(registerSchema), authController.register);
+router.post('/register', authLimiter, validate(registerSchema), requireAuth, requireRole('superadmin'), authController.register);
 router.post('/login', authLimiter, validate(loginSchema), authController.login);
 router.post('/refresh', authController.refresh);
 router.post('/logout', requireAuth, authController.logout);

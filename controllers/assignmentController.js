@@ -1,5 +1,59 @@
 const Assignment = require('../models/Assignment');
 const Asset = require('../models/Asset'); // ASSUMPTION: path/name of your Asset model
+const License = require('../models/License');
+const Accessory = require('../models/Accessory');
+const Consumable = require('../models/Consumable');
+const AssetRequest = require('../models/AssetRequest');
+
+function escapeRegex(value = '') {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// GET /api/assignments/my-dashboard
+exports.getMyDashboard = async (req, res, next) => {
+  try {
+    const name = escapeRegex(req.user.name);
+    const email = escapeRegex(req.user.email);
+    const personMatch = { $or: [{ 'assignedTo.email': new RegExp(`^${email}$`, 'i') }, { 'assignedTo.name': new RegExp(`^${name}$`, 'i') }] };
+
+    const [assignments, licenses, accessories, consumables, allRequestable, requested] = await Promise.all([
+      Assignment.find(personMatch).populate('asset', 'name assetTag category brand model serialNumber status location warrantyExpiry qrCode').sort({ checkoutDate: -1 }).lean(),
+      License.find({ 'seatAssignments.assignedTo': { $exists: true } }).select('name vendor category expirationDate seatAssignments').lean(),
+      Accessory.find({ 'checkouts.assignedTo': { $exists: true } }).select('name category manufacturer modelNumber checkouts').lean(),
+      Consumable.find({ 'issues.assignedTo': { $exists: true } }).select('name category manufacturer modelNumber issues').lean(),
+      Asset.find({ status: 'available' }).select('name assetTag category brand model serialNumber location status').sort({ createdAt: -1 }).limit(50).lean(),
+      AssetRequest.find({ requester: req.user._id }).populate('asset', 'name assetTag category model location status').sort({ createdAt: -1 }).lean(),
+    ]);
+
+    const matchesPerson = (entry) => {
+      const assigned = entry.assignedTo || {};
+      return (assigned.email && assigned.email.toLowerCase() === req.user.email.toLowerCase())
+        || (assigned.name && assigned.name.toLowerCase() === req.user.name.toLowerCase());
+    };
+    const myLicenses = licenses.flatMap((license) => license.seatAssignments.filter(matchesPerson).map((seat) => ({ ...license, seatAssignments: undefined, assignedDate: seat.assignedDate, notes: seat.notes })));
+    const myAccessories = accessories.flatMap((accessory) => accessory.checkouts.filter((checkout) => !checkout.checkinDate && matchesPerson(checkout)).map((checkout) => ({ ...accessory, checkouts: undefined, quantity: checkout.quantity, checkoutDate: checkout.checkoutDate, notes: checkout.notes })));
+    const myConsumables = consumables.flatMap((consumable) => consumable.issues.filter(matchesPerson).map((issue) => ({ ...consumable, issues: undefined, quantity: issue.quantity, issuedDate: issue.issuedDate, notes: issue.notes })));
+
+    res.json({
+      user: req.user.toSafeJSON(),
+      assets: assignments,
+      licenses: myLicenses,
+      accessories: myAccessories,
+      consumables: myConsumables,
+      eulas: [],
+      requestable: allRequestable.filter((asset) => !requested.some((request) => request.asset?._id?.toString() === asset._id.toString() && request.status === 'pending')),
+      requested,
+      summary: {
+        assets: assignments.filter((item) => item.status !== 'returned').length,
+        licenses: myLicenses.length,
+        accessories: myAccessories.reduce((total, item) => total + item.quantity, 0),
+        consumables: myConsumables.reduce((total, item) => total + item.quantity, 0),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // GET /api/assignments?status=assigned&search=john&page=1&limit=20
 exports.getAssignments = async (req, res, next) => {

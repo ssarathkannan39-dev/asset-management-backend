@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
 
 const authRoutes = require('./routes/authRoutes');
 const assetRoutes = require('./routes/assetRoutes');
@@ -13,9 +14,15 @@ const consumableRoutes = require('./routes/consumableRoutes');
 const licenseRoutes = require('./routes/licenseRoutes');
 const documentListRoutes = require('./routes/documentListRoutes');
 const reportRoutes = require('./routes/reportRoutes');
+const requirementRoutes = require('./routes/requirementRoutes');
+const assetRequestRoutes = require('./routes/assetRequestRoutes');
+const userRoutes = require('./routes/userRoutes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
+
+app.disable('x-powered-by');
+app.use(helmet());
 
 app.use(
   cors({
@@ -23,7 +30,6 @@ app.use(
     credentials: true,
   })
 );
-app.use('/uploads', express.static(require('path').resolve(__dirname, 'uploads')));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
@@ -40,6 +46,9 @@ app.use('/api/consumables', consumableRoutes);
 app.use('/api/licenses', licenseRoutes);
 app.use('/api/documents', documentListRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/requirements', requirementRoutes);
+app.use('/api/asset-requests', assetRequestRoutes);
+app.use('/api/users', userRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

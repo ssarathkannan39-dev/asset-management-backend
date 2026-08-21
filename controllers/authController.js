@@ -20,19 +20,19 @@ const register = asyncHandler(async (req, res) => {
   const existing = await User.findOne({ email });
   if (existing) throw new ConflictError('An account with this email already exists');
 
-  const userCount = await User.countDocuments();
-  // First user in the system becomes superadmin automatically.
-  const assignedRole = userCount === 0 ? 'superadmin' : role || 'admin';
+  const assignedRole = role || 'asset_user';
 
   const user = await User.create({ name, email, password, role: assignedRole });
 
-  await recordAudit({ req: { ...req, user }, action: 'create', entityType: 'User', entityId: user._id, entityLabel: user.email });
+  req.user = user;
+  await recordAudit({ req, action: 'create', entityType: 'User', entityId: user._id, entityLabel: user.email });
 
   res.status(201).json({ user: user.toSafeJSON() });
 });
 
 const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
+  const email = req.body.email.trim().toLowerCase();
+  const { password } = req.body;
   const user = await User.findOne({ email }).select('+password');
 
   if (!user || !(await user.comparePassword(password))) {
@@ -45,7 +45,8 @@ const login = asyncHandler(async (req, res) => {
   const refreshToken = signRefreshToken(user);
 
   res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts());
-  await recordAudit({ req: { ...req, user }, action: 'login', entityType: 'Auth', entityId: user._id, entityLabel: user.email });
+  req.user = user;
+  await recordAudit({ req, action: 'login', entityType: 'Auth', entityId: user._id, entityLabel: user.email });
 
   res.json({ accessToken, user: user.toSafeJSON() });
 });

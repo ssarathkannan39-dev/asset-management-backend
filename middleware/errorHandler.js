@@ -14,7 +14,6 @@ function errorHandler(err, req, res, next) {
     error: err.name || 'InternalError',
     message: status < 500 ? err.message : 'Something went wrong',
     ...(err.details ? { details: err.details } : {}),
-    ...(process.env.NODE_ENV === 'development' && status >= 500 ? { stack: err.stack } : {}),
   });
 }
 
