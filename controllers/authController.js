@@ -8,9 +8,9 @@ const REFRESH_COOKIE = 'refresh_token';
 const cookieOpts = () => ({
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict',
+  sameSite: 'lax',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-  path: '/api/auth',
+  path: '/',
 });
 
 // Only intended for bootstrapping the very first admin account.
@@ -76,7 +76,7 @@ const refresh = asyncHandler(async (req, res) => {
 });
 
 const logout = asyncHandler(async (req, res) => {
-  res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
+  res.clearCookie(REFRESH_COOKIE, { path: '/' });
   if (req.user) {
     await recordAudit({ req, action: 'logout', entityType: 'Auth', entityId: req.user._id, entityLabel: req.user.email });
   }
@@ -88,7 +88,7 @@ const me = asyncHandler(async (req, res) => {
 });
 
 const updateProfile = asyncHandler(async (req, res) => {
-  const { name, email, currentPassword, newPassword } = req.body;
+  const { name, email, currentPassword, newPassword, location, phone, website, avatar, preferences } = req.body;
   if (name !== undefined && (typeof name !== 'string' || name.trim().length < 2)) {
     throw new ValidationError('Name must be at least 2 characters');
   }
@@ -107,6 +107,11 @@ const updateProfile = asyncHandler(async (req, res) => {
   }
   if (name !== undefined) req.user.name = name.trim();
   if (email !== undefined) req.user.email = email.toLowerCase().trim();
+  if (location !== undefined) req.user.location = location.trim();
+  if (phone !== undefined) req.user.phone = phone.trim();
+  if (website !== undefined) req.user.website = website.trim();
+  if (avatar !== undefined) req.user.avatar = avatar;
+  if (preferences !== undefined) req.user.preferences = { ...req.user.preferences?.toObject?.(), ...preferences };
   await req.user.save();
   res.json({ user: req.user.toSafeJSON() });
 });

@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const CATEGORIES = ['Laptop', 'Desktop', 'Monitor', 'Phone', 'Tablet', 'Server', 'Networking', 'Peripheral', 'Software License', 'Other'];
-const STATUSES = ['available', 'assigned', 'in_maintenance', 'retired', 'lost'];
+const STATUSES = ['available', 'assigned', 'in_maintenance', 'retired', 'lost', 'byod', 'deleted'];
 const DOCUMENT_CATEGORIES = ['invoice', 'warranty', 'manual', 'insurance', 'other'];
 
 const documentSchema = new mongoose.Schema(
@@ -17,7 +17,7 @@ const documentSchema = new mongoose.Schema(
     uploadedAt: { type: Date, default: Date.now },
   },
   { _id: true }
-);
+);    
 
 const assetSchema = new mongoose.Schema(
   {
@@ -32,7 +32,7 @@ const assetSchema = new mongoose.Schema(
     purchaseDate: { type: Date },
     purchaseCost: { type: Number, min: 0 },
     vendor: { type: String, trim: true },
-    warrantyExpiry: { type: Date },
+    warrantyExpiry: { type: Date },    
 
     location: { type: String, trim: true },
     notes: { type: String, trim: true },
@@ -42,7 +42,7 @@ const assetSchema = new mongoose.Schema(
     qrCode: { type: String }, // data URL (base64 PNG) generated on creation
     documents: { type: [documentSchema], default: [] },
 
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },  
   },
   { timestamps: true }
 );

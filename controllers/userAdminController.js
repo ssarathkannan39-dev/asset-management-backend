@@ -1,6 +1,29 @@
 const User = require('../models/User');
 const { ValidationError, ConflictError, NotFoundError } = require('../utils/errors');
 
+const ROLE_MENU_DEFAULTS = {
+  superadmin: ['dashboard', 'super-dashboard', 'my-assets', 'requestable-items', 'requirements', 'assets', 'all-assets', 'add-asset', 'deployed-assets', 'ready-assets', 'pending-assets', 'undeployable-assets', 'byod-assets', 'archived-assets', 'requestable-assets', 'audit-due', 'checkin-due', 'scan-asset', 'quick-scan-checkin', 'bulk-checkout', 'requested-assets', 'deleted-assets', 'scanner-audit', 'assignments', 'maintenance', 'inventory', 'accessories', 'consumables', 'licenses', 'documents', 'components', 'kits', 'import', 'settings', 'custom-fields', 'status-labels', 'categories', 'reports', 'people', 'all-users', 'my-profile', 'audit-log'],
+  admin: ['dashboard', 'assets', 'all-assets', 'add-asset', 'deployed-assets', 'ready-assets', 'pending-assets', 'undeployable-assets', 'byod-assets', 'archived-assets', 'requestable-assets', 'audit-due', 'checkin-due', 'scan-asset', 'quick-scan-checkin', 'bulk-checkout', 'requested-assets', 'deleted-assets', 'scanner-audit', 'assignments', 'maintenance', 'requirements', 'reports', 'documents', 'components', 'kits', 'import', 'profile', 'audit-log', 'my-assets', 'requestable-items'],
+  asset_user: ['my-assets', 'requestable-items', 'requested-items', 'maintenance', 'documents'],
+};
+
+const ALLOWED_MENU_KEYS = new Set(Object.values(ROLE_MENU_DEFAULTS).flat());
+
+function normalizeMenuAccess(menuAccess) {
+  if (!Array.isArray(menuAccess)) return [];
+  const unique = [...new Set(menuAccess.filter((key) => typeof key === 'string').map((key) => key.trim()).filter(Boolean))];
+  return unique.filter((key) => ALLOWED_MENU_KEYS.has(key));
+}
+
+function getDefaultMenuAccess(role) {
+  return ROLE_MENU_DEFAULTS[role] || [];
+}
+
+function resolveMenuAccess(role, menuAccess) {
+  const normalized = normalizeMenuAccess(menuAccess);
+  return normalized.length ? normalized : getDefaultMenuAccess(role);
+}
+
 function safeUser(user) {
   return user.toSafeJSON();
 }
@@ -21,13 +44,21 @@ exports.list = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const { name, email, password, role = 'asset_user' } = req.body;
+    const { name, email, password, role = 'asset_user', menuAccess } = req.body;
     if (!name || name.trim().length < 2) throw new ValidationError('Name must be at least 2 characters');
     if (!email || !/^\S+@\S+\.\S+$/.test(email)) throw new ValidationError('A valid email is required');
     if (!password || password.length < 8) throw new ValidationError('Password must be at least 8 characters');
     if (!['asset_user', 'admin', 'superadmin'].includes(role)) throw new ValidationError('Invalid user role');
     if (await User.exists({ email: email.toLowerCase().trim() })) throw new ConflictError('An account with this email already exists');
-    const user = await User.create({ name: name.trim(), email: email.toLowerCase().trim(), password, role });
+
+    const resolvedMenuAccess = resolveMenuAccess(role, menuAccess);
+    const user = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      password,
+      role,
+      menuAccess: resolvedMenuAccess,
+    });
     res.status(201).json({ user: safeUser(user) });
   } catch (error) {
     next(error);
@@ -54,6 +85,12 @@ exports.update = async (req, res, next) => {
       if (!['asset_user', 'admin', 'superadmin'].includes(req.body.role)) throw new ValidationError('Invalid user role');
       if (user._id.equals(req.user._id) && req.body.role !== 'superadmin') throw new ValidationError('You cannot remove your own superadmin role');
       user.role = req.body.role;
+      if (req.body.menuAccess === undefined) {
+        user.menuAccess = getDefaultMenuAccess(req.body.role);
+      }
+    }
+    if (req.body.menuAccess !== undefined) {
+      user.menuAccess = resolveMenuAccess(user.role, req.body.menuAccess);
     }
     if (req.body.active !== undefined) user.active = Boolean(req.body.active);
     if (req.body.password !== undefined) {

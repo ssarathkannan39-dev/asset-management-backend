@@ -28,3 +28,70 @@ test('requirement catalog endpoint is mounted and protected', async () => {
   assert.equal(response.status, 401);
   assert.equal(response.body.error, 'UnauthorizedError');
 });
+
+test('user records retain assigned menu access permissions', async () => {
+  const User = require('../models/User');
+  const user = new User({
+    name: 'Menu Access User',
+    email: 'menu.access@example.com',
+    password: 'Password123',
+    role: 'admin',
+    menuAccess: ['assets', 'maintenance', 'reports'],
+  });
+
+  assert.deepEqual(user.menuAccess, ['assets', 'maintenance', 'reports']);
+  assert.ok(User.schema.path('menuAccess'));
+});
+
+test('login cookie is scoped to the app root so protected API calls keep working', async () => {
+  const User = require('../models/User');
+  const AuditLog = require('../models/AuditLog');
+  const authController = require('../controllers/authController');
+
+  process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'test-access-secret';
+  process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test-refresh-secret';
+
+  const originalFindOne = User.findOne;
+  const originalCreate = AuditLog.create;
+  const email = 'cookie.scope@example.com';
+  const password = 'Pass12345';
+
+  const user = {
+    _id: 'user-1',
+    email,
+    active: true,
+    role: 'superadmin',
+    refreshTokenVersion: 1,
+    comparePassword: async () => true,
+    toSafeJSON: () => ({ id: 'user-1', email, role: 'superadmin' }),
+    save: async () => {},
+  };
+
+  user.select = async () => user;
+  User.findOne = () => ({ select: async () => user });
+  AuditLog.create = async () => ({ ok: true });
+
+  const cookies = [];
+  const res = {
+    cookie(name, value, options) {
+      cookies.push({ name, value, options });
+    },
+    json(payload) {
+      this.payload = payload;
+    },
+  };
+
+  try {
+    await authController.login({ body: { email, password }, headers: {} }, res, () => {});
+  } finally {
+    User.findOne = originalFindOne;
+    AuditLog.create = originalCreate;
+  }
+
+  assert.equal(cookies.length, 1);
+  assert.equal(cookies[0].name, 'refresh_token');
+  assert.equal(cookies[0].options.path, '/');
+  assert.equal(cookies[0].options.sameSite, 'lax');
+  assert.ok(res.payload.accessToken);
+  assert.equal(res.payload.user.email, email);
+});

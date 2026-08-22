@@ -17,6 +17,10 @@ const reportRoutes = require('./routes/reportRoutes');
 const requirementRoutes = require('./routes/requirementRoutes');
 const assetRequestRoutes = require('./routes/assetRequestRoutes');
 const userRoutes = require('./routes/userRoutes');
+const componentRoutes = require('./routes/componentRoutes');
+const kitRoutes = require('./routes/kitRoutes');
+const eulaRoutes = require('./routes/eulaRoutes');
+const importRoutes = require('./routes/importRoutes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -49,6 +53,10 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/requirements', requirementRoutes);
 app.use('/api/asset-requests', assetRequestRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/components', componentRoutes);
+app.use('/api/kits', kitRoutes);
+app.use('/api/eulas', eulaRoutes);
+app.use('/api/import', importRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

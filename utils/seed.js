@@ -131,15 +131,20 @@ async function seedRequests(assetUser, assets) {
 
 async function seed() {
   await connectDB();
-  const email = (process.env.SEED_EMAIL || 'admin@gmail.com').toLowerCase();
-  const password = process.env.SEED_PASSWORD || 'admin@123';
-  const name = process.env.SEED_NAME || 'Admin';
+  const email = (process.env.SEED_EMAIL || 'superadmin@gmail.com').toLowerCase();
+  const password = process.env.SEED_PASSWORD || 'super@123';
+  const name = process.env.SEED_NAME || 'Super Admin';
 
   let admin = await User.findOne({ email }).select('+password');
   if (!admin) {
     admin = await User.create({ name, email, password, role: 'superadmin' });
     console.log(`[seed] created superadmin: ${email} / ${password}`);
   } else {
+    admin.name = name;
+    admin.password = password;
+    admin.role = 'superadmin';
+    admin.active = true;
+    await admin.save();
     console.log(`[seed] using existing superadmin: ${email}`);
   }
 

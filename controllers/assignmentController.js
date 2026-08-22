@@ -4,6 +4,7 @@ const License = require('../models/License');
 const Accessory = require('../models/Accessory');
 const Consumable = require('../models/Consumable');
 const AssetRequest = require('../models/AssetRequest');
+const Eula = require('../models/Eula');
 
 function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -16,13 +17,14 @@ exports.getMyDashboard = async (req, res, next) => {
     const email = escapeRegex(req.user.email);
     const personMatch = { $or: [{ 'assignedTo.email': new RegExp(`^${email}$`, 'i') }, { 'assignedTo.name': new RegExp(`^${name}$`, 'i') }] };
 
-    const [assignments, licenses, accessories, consumables, allRequestable, requested] = await Promise.all([
+    const [assignments, licenses, accessories, consumables, allRequestable, requested, eulas] = await Promise.all([
       Assignment.find(personMatch).populate('asset', 'name assetTag category brand model serialNumber status location warrantyExpiry qrCode').sort({ checkoutDate: -1 }).lean(),
       License.find({ 'seatAssignments.assignedTo': { $exists: true } }).select('name vendor category expirationDate seatAssignments').lean(),
       Accessory.find({ 'checkouts.assignedTo': { $exists: true } }).select('name category manufacturer modelNumber checkouts').lean(),
       Consumable.find({ 'issues.assignedTo': { $exists: true } }).select('name category manufacturer modelNumber issues').lean(),
       Asset.find({ status: 'available' }).select('name assetTag category brand model serialNumber location status').sort({ createdAt: -1 }).limit(50).lean(),
       AssetRequest.find({ requester: req.user._id }).populate('asset', 'name assetTag category model location status').sort({ createdAt: -1 }).lean(),
+      Eula.find({ $or: [{ 'assignedTo.email': req.user.email }, { 'assignedTo.name': req.user.name }] }).populate('asset', 'name assetTag').populate('license', 'name vendor').sort({ createdAt: -1 }).lean(),
     ]);
 
     const matchesPerson = (entry) => {
@@ -34,17 +36,22 @@ exports.getMyDashboard = async (req, res, next) => {
     const myAccessories = accessories.flatMap((accessory) => accessory.checkouts.filter((checkout) => !checkout.checkinDate && matchesPerson(checkout)).map((checkout) => ({ ...accessory, checkouts: undefined, quantity: checkout.quantity, checkoutDate: checkout.checkoutDate, notes: checkout.notes })));
     const myConsumables = consumables.flatMap((consumable) => consumable.issues.filter(matchesPerson).map((issue) => ({ ...consumable, issues: undefined, quantity: issue.quantity, issuedDate: issue.issuedDate, notes: issue.notes })));
 
+    const normalizedAssignments = assignments.map((assignment) => ({
+      ...assignment,
+      status: assignment.status === 'returned' ? 'returned' : (assignment.dueDate && new Date(assignment.dueDate) < new Date() ? 'overdue' : 'assigned'),
+    }));
+
     res.json({
       user: req.user.toSafeJSON(),
-      assets: assignments,
+      assets: normalizedAssignments,
       licenses: myLicenses,
       accessories: myAccessories,
       consumables: myConsumables,
-      eulas: [],
+      eulas,
       requestable: allRequestable.filter((asset) => !requested.some((request) => request.asset?._id?.toString() === asset._id.toString() && request.status === 'pending')),
       requested,
       summary: {
-        assets: assignments.filter((item) => item.status !== 'returned').length,
+        assets: normalizedAssignments.filter((item) => item.status !== 'returned').length,
         licenses: myLicenses.length,
         accessories: myAccessories.reduce((total, item) => total + item.quantity, 0),
         consumables: myConsumables.reduce((total, item) => total + item.quantity, 0),
