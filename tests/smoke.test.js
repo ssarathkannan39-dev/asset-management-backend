@@ -29,6 +29,14 @@ test('requirement catalog endpoint is mounted and protected', async () => {
   assert.equal(response.body.error, 'UnauthorizedError');
 });
 
+test('new dynamic module endpoints are mounted and protected', async () => {
+  for (const path of ['/api/components', '/api/kits', '/api/eulas', '/api/import/assets']) {
+    const response = await request(app).get(path);
+    assert.equal(response.status, 401, `${path} should require authentication`);
+    assert.equal(response.body.error, 'UnauthorizedError');
+  }
+});
+
 test('user records retain assigned menu access permissions', async () => {
   const User = require('../models/User');
   const user = new User({

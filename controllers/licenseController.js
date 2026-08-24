@@ -13,16 +13,11 @@ exports.getLicenses = async (req, res, next) => {
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
-
-    const [items, total] = await Promise.all([
-      License.find(query)
-        .populate('seatAssignments.asset', 'name assetTag')
-        .sort({ name: 1 })
-        .skip(skip)
-        .limit(Number(limit)),
-      License.countDocuments(query),
-    ]);
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
+    const items = await License.find(query)
+      .populate('seatAssignments.asset', 'name assetTag')
+      .sort({ name: 1 });
 
     let data = items.map((doc) => {
       const obj = doc.toObject({ virtuals: true });
@@ -35,10 +30,9 @@ exports.getLicenses = async (req, res, next) => {
       data = data.filter((l) => l.status === status);
     }
 
-    res.json({
-      data,
-      pagination: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) },
-    });
+    const total = data.length;
+    const pagedData = data.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+    res.json({ data: pagedData, pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) } });
   } catch (err) {
     next(err);
   }
