@@ -5,6 +5,7 @@ const Accessory = require('../models/Accessory');
 const Consumable = require('../models/Consumable');
 const AssetRequest = require('../models/AssetRequest');
 const Eula = require('../models/Eula');
+const { findUserByPerson, notifySafely, notifyUser } = require('../utils/notifications');
 
 function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -162,6 +163,15 @@ exports.checkoutAsset = async (req, res, next) => {
     await asset.save();
 
     const populated = await assignment.populate('asset', 'name assetTag category status');
+    const assignedUser = await findUserByPerson(assignedTo);
+    await notifySafely(() => notifyUser({
+      user: assignedUser,
+      type: 'assignment',
+      title: 'Asset assigned to you',
+      message: `${populated.asset?.assetTag || 'An asset'} (${populated.asset?.name || 'asset'}) was assigned to you${dueDate ? ` and is due back on ${new Date(dueDate).toLocaleDateString()}.` : '.'}`,
+      entityType: 'Assignment',
+      entityId: assignment._id,
+    }));
     res.status(201).json(populated);
   } catch (err) {
     next(err);
@@ -193,6 +203,15 @@ exports.checkinAsset = async (req, res, next) => {
       await assignment.asset.save();
     }
 
+    const assignedUser = await findUserByPerson(assignment.assignedTo);
+    await notifySafely(() => notifyUser({
+      user: assignedUser,
+      type: 'assignment',
+      title: 'Asset checked in',
+      message: `${assignment.asset?.assetTag || 'An assigned asset'} has been checked in by ${req.user.name}.`,
+      entityType: 'Assignment',
+      entityId: assignment._id,
+    }));
     res.json(assignment);
   } catch (err) {
     next(err);

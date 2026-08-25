@@ -27,7 +27,7 @@ const assignmentSchema = new mongoose.Schema(
       ref: 'User',
     },
     checkedInBy: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: mongoose.Schema.Types.ObjectId,    
       ref: 'User',
     },
     checkoutDate: { type: Date, default: Date.now, required: true },

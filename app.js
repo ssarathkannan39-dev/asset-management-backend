@@ -21,6 +21,8 @@ const componentRoutes = require('./routes/componentRoutes');
 const kitRoutes = require('./routes/kitRoutes');
 const eulaRoutes = require('./routes/eulaRoutes');
 const importRoutes = require('./routes/importRoutes');
+const calendarRoutes = require('./routes/calendarRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -57,6 +59,8 @@ app.use('/api/components', componentRoutes);
 app.use('/api/kits', kitRoutes);
 app.use('/api/eulas', eulaRoutes);
 app.use('/api/import', importRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

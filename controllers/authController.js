@@ -60,11 +60,13 @@ const refresh = asyncHandler(async (req, res) => {
   try {
     payload = verifyRefreshToken(token);  
   } catch {
+    res.clearCookie(REFRESH_COOKIE, { path: '/' });
     throw new UnauthorizedError('Invalid or expired refresh token');
   }
 
   const user = await User.findById(payload.sub);
   if (!user || !user.active || user.refreshTokenVersion !== payload.v) {
+    res.clearCookie(REFRESH_COOKIE, { path: '/' });
     throw new UnauthorizedError('Refresh token no longer valid');
   }
 

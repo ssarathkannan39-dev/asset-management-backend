@@ -1,5 +1,6 @@
 const Maintenance = require('../models/Maintenance');
 const Asset = require('../models/Asset'); // ASSUMPTION: path/name of your Asset model
+const { notifyCurrentAssignee, notifySafely } = require('../utils/notifications');
 
 // GET /api/maintenance?status=Open&search=screen&page=1&limit=20
 exports.getMaintenanceRecords = async (req, res, next) => {
@@ -99,6 +100,14 @@ exports.createMaintenanceRecord = async (req, res, next) => {
     }
 
     const populated = await record.populate('asset', 'name assetTag category status');
+    await notifySafely(() => notifyCurrentAssignee({
+      assetId,
+      type: 'maintenance',
+      title: 'Maintenance logged for your asset',
+      message: `${populated.asset?.assetTag || 'Your asset'} has a new maintenance record: ${record.title}.`,
+      entityType: 'Maintenance',
+      entityId: record._id,
+    }));
     res.status(201).json(populated);
   } catch (err) {
     next(err);
@@ -140,6 +149,16 @@ exports.updateMaintenanceRecord = async (req, res, next) => {
       await record.asset.save();
     }
 
+    if (['Completed', 'Cancelled'].includes(record.status)) {
+      await notifySafely(() => notifyCurrentAssignee({
+        assetId: record.asset?._id,
+        type: 'maintenance',
+        title: `Maintenance ${record.status.toLowerCase()}`,
+        message: `${record.title} for ${record.asset?.assetTag || 'your asset'} was ${record.status.toLowerCase()} by ${req.user.name}.`,
+        entityType: 'Maintenance',
+        entityId: record._id,
+      }));
+    }
     res.json(record);
   } catch (err) {
     next(err);

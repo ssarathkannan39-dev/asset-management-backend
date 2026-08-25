@@ -30,7 +30,7 @@ test('requirement catalog endpoint is mounted and protected', async () => {
 });
 
 test('new dynamic module endpoints are mounted and protected', async () => {
-  for (const path of ['/api/components', '/api/kits', '/api/eulas', '/api/import/assets']) {
+  for (const path of ['/api/components', '/api/kits', '/api/eulas', '/api/import/assets', '/api/calendar/events', '/api/notifications']) {
     const response = await request(app).get(path);
     assert.equal(response.status, 401, `${path} should require authentication`);
     assert.equal(response.body.error, 'UnauthorizedError');
@@ -102,4 +102,22 @@ test('login cookie is scoped to the app root so protected API calls keep working
   assert.equal(cookies[0].options.sameSite, 'lax');
   assert.ok(res.payload.accessToken);
   assert.equal(res.payload.user.email, email);
+});
+
+test('invalid refresh tokens clear the stale refresh cookie', async () => {
+  const response = await request(app)
+    .post('/api/auth/refresh')
+    .set('Cookie', 'refresh_token=stale-token');
+
+  assert.equal(response.status, 401);
+  assert.ok(response.headers['set-cookie']?.some((cookie) => cookie.startsWith('refresh_token=;')));
+});
+
+test('logout clears a stale session without requiring an access token', async () => {
+  const response = await request(app)
+    .post('/api/auth/logout')
+    .set('Cookie', 'refresh_token=stale-token');
+
+  assert.equal(response.status, 204);
+  assert.ok(response.headers['set-cookie']?.some((cookie) => cookie.startsWith('refresh_token=;')));
 });
