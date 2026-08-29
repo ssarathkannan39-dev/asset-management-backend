@@ -33,7 +33,7 @@ const register = asyncHandler(async (req, res) => {
 const login = asyncHandler(async (req, res) => {
   const email = req.body.email.trim().toLowerCase();
   const { password } = req.body;
-  const user = await User.findOne({ email }).select('+password');
+  const user = await User.findOne({ email, deletedAt: null }).select('+password');
 
   if (!user || !(await user.comparePassword(password))) {
     await recordAudit({ req, action: 'login_failed', entityType: 'Auth', entityLabel: email });
@@ -65,7 +65,7 @@ const refresh = asyncHandler(async (req, res) => {
   }
 
   const user = await User.findById(payload.sub);
-  if (!user || !user.active || user.refreshTokenVersion !== payload.v) {
+  if (!user || user.deletedAt || !user.active || user.refreshTokenVersion !== payload.v) {
     res.clearCookie(REFRESH_COOKIE, { path: '/' });
     throw new UnauthorizedError('Refresh token no longer valid');
   }

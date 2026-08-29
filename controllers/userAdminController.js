@@ -30,10 +30,11 @@ function safeUser(user) {
 
 exports.list = async (req, res, next) => {
   try {
-    const { search, role, active } = req.query;
+    const { search, role, active, deleted } = req.query;
     const filter = {};
     if (role && role !== 'all') filter.role = role;
     if (active !== undefined && active !== 'all') filter.active = active === 'true';
+    if (deleted !== undefined && deleted !== 'all') filter.deletedAt = deleted === 'true' ? { $ne: null } : null;
     if (search) filter.$or = [{ name: { $regex: search, $options: 'i' } }, { email: { $regex: search, $options: 'i' } }];
     const users = await User.find(filter).sort({ createdAt: -1 });
     res.json({ users: users.map(safeUser), total: users.length });
@@ -69,6 +70,7 @@ exports.update = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id).select('+password');
     if (!user) throw new NotFoundError('User not found');
+    if (user.deletedAt) throw new ValidationError('This user account has been deleted');
     if (user._id.equals(req.user._id) && req.body.active === false) throw new ValidationError('You cannot disable your own account');
     if (req.body.name !== undefined) {
       if (typeof req.body.name !== 'string' || req.body.name.trim().length < 2) throw new ValidationError('Name must be at least 2 characters');
@@ -108,8 +110,12 @@ exports.update = async (req, res, next) => {
 exports.remove = async (req, res, next) => {
   try {
     if (req.params.id === req.user._id.toString()) throw new ValidationError('You cannot delete your own account');
-    const user = await User.findByIdAndDelete(req.params.id);
+    const user = await User.findById(req.params.id);
     if (!user) throw new NotFoundError('User not found');
+    if (user.deletedAt) throw new ValidationError('User account is already deleted');
+    user.deletedAt = new Date();
+    user.active = false;
+    await user.save();
     res.status(204).send();
   } catch (error) {
     next(error);

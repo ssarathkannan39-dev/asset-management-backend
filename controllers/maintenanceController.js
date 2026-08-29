@@ -1,26 +1,36 @@
 const Maintenance = require('../models/Maintenance');
-const Asset = require('../models/Asset'); // ASSUMPTION: path/name of your Asset model
+const Asset = require('../models/Asset');
 const { notifyCurrentAssignee, notifySafely } = require('../utils/notifications');
 
-// GET /api/maintenance?status=Open&search=screen&page=1&limit=20
+const normalizeStatus = (value) => {
+  if (!value || value === 'all') return null;
+  if (value === 'overdue') return 'overdue';
+  return value;
+};
+
 exports.getMaintenanceRecords = async (req, res, next) => {
   try {
-    const { status, search, page = 1, limit = 20 } = req.query;
+    const { status, type, priority, assetId, search, page = 1, limit = 20 } = req.query;
     const query = {};
 
-    if (status && status !== 'all') {
-      if (status === 'overdue') {
-        query.status = { $nin: ['Completed', 'Cancelled'] };
-        query.dueDate = { $lt: new Date() };
-      } else {
-        query.status = status;
-      }
+    const normalizedStatus = normalizeStatus(status);
+    if (normalizedStatus === 'overdue') {
+      query.status = { $nin: ['Completed', 'Cancelled'] };
+      query.dueDate = { $lt: new Date() };
+    } else if (normalizedStatus) {
+      query.status = normalizedStatus;
     }
+
+    if (type && type !== 'all') query.type = type;
+    if (priority && priority !== 'all') query.priority = priority;
+    if (assetId && assetId !== 'all') query.asset = assetId;
 
     if (search) {
       query.$or = [
         { title: { $regex: search, $options: 'i' } },
         { vendor: { $regex: search, $options: 'i' } },
+        { assignee: { $regex: search, $options: 'i' } },
+        { team: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -68,10 +78,9 @@ exports.getMaintenanceRecord = async (req, res, next) => {
 };
 
 // POST /api/maintenance
-// body: { assetId, type, title, description, vendor, cost, startDate, dueDate, status }
 exports.createMaintenanceRecord = async (req, res, next) => {
   try {
-    const { assetId, type, title, description, vendor, cost, startDate, dueDate, status } = req.body;
+    const { assetId, type, title, description, vendor, cost, startDate, dueDate, status, priority, assignee, team, recurring, notes } = req.body;
 
     if (!assetId || !title) {
       return res.status(400).json({ message: 'assetId and title are required' });
@@ -82,14 +91,19 @@ exports.createMaintenanceRecord = async (req, res, next) => {
 
     const record = await Maintenance.create({
       asset: assetId,
-      type,
+      type: type || 'Repair',
       title,
-      description,
-      vendor,
-      cost,
-      startDate: startDate || undefined,
+      description: description || '',
+      vendor: vendor || '',
+      cost: cost === undefined ? 0 : Number(cost),
+      priority: priority || 'Medium',
+      assignee: assignee || '',
+      team: team || '',
+      recurring: Boolean(recurring),
+      startDate: startDate || new Date(),
       dueDate: dueDate || undefined,
       status: status || 'Open',
+      notes: notes || '',
       createdBy: req.user?._id,
     });
 
@@ -121,7 +135,7 @@ exports.updateMaintenanceRecord = async (req, res, next) => {
     const record = await Maintenance.findById(req.params.id).populate('asset');
     if (!record) return res.status(404).json({ message: 'Maintenance record not found' });
 
-    const editable = ['type', 'title', 'description', 'vendor', 'cost', 'dueDate', 'status', 'notes'];
+    const editable = ['type', 'title', 'description', 'vendor', 'cost', 'startDate', 'dueDate', 'status', 'priority', 'assignee', 'team', 'recurring', 'notes'];
     editable.forEach((field) => {
       if (req.body[field] !== undefined) record[field] = req.body[field];
     });

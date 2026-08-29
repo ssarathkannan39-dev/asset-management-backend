@@ -46,11 +46,47 @@ const getById = asyncHandler(async (req, res) => {
   res.json({ asset, assignmentHistory, maintenanceHistory });
 });
 
+const sanitizeAssetForScan = (asset) => {
+  if (!asset) return null;
+
+  return {
+    _id: asset._id,
+    assetTag: asset.assetTag,
+    name: asset.name,
+    category: asset.category,
+    status: asset.status,
+    location: asset.location,
+    createdAt: asset.createdAt,
+    updatedAt: asset.updatedAt,
+    currentAssignment: asset.currentAssignment
+      ? {
+          _id: asset.currentAssignment._id,
+          status: asset.currentAssignment.status,
+          dueDate: asset.currentAssignment.dueDate,
+          checkoutDate: asset.currentAssignment.checkoutDate,
+          assignedTo: asset.currentAssignment.assignedTo
+            ? {
+                name: asset.currentAssignment.assignedTo.name,
+                department: asset.currentAssignment.assignedTo.department || null,
+              }
+            : null,
+        }
+      : null,
+  };
+};
+
 // Lookup by human-readable tag - used by the QR scan flow
 const getByTag = asyncHandler(async (req, res) => {
-  const asset = await Asset.findOne({ assetTag: req.params.tag }).populate('currentAssignment');
+  const rawTag = String(req.params.tag || '').trim();
+  const asset = await Asset.findOne({ assetTag: rawTag })
+    .populate({
+      path: 'currentAssignment',
+      select: 'assignedTo status dueDate checkoutDate',
+    });
+
   if (!asset) throw new NotFoundError('No asset found for that tag');
-  res.json({ asset });
+
+  res.json({ asset: sanitizeAssetForScan(asset) });
 });
 
 const create = asyncHandler(async (req, res) => {

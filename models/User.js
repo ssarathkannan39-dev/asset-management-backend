@@ -18,6 +18,7 @@ const userSchema = new mongoose.Schema(
       confetti: { type: Boolean, default: true },
     },
     active: { type: Boolean, default: true },
+    deletedAt: { type: Date, default: null },
     refreshTokenVersion: { type: Number, default: 0 }, // bump to invalidate all refresh tokens
   },
   { timestamps: true }
@@ -41,6 +42,7 @@ userSchema.methods.toSafeJSON = function toSafeJSON() {
     role: this.role,
     menuAccess: this.menuAccess || [],
     active: this.active,
+    deletedAt: this.deletedAt,
     location: this.location,
     phone: this.phone,
     website: this.website,

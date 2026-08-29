@@ -1,11 +1,8 @@
 const mongoose = require('mongoose');
 
-/**
- * ASSUMPTIONS — adjust to match your real schema:
- * - Asset model at '../models/Asset' with a `status` field (see assignmentController for the
- *   same assumption). This module sets it to 'In Repair' while a maintenance record is open.
- * - Auth middleware attaches req.user with at least { _id, name }
- */
+const TYPES = ['Repair', 'Scheduled Service', 'Inspection', 'Upgrade', 'Other'];
+const STATUSES = ['Open', 'Scheduled', 'In Progress', 'Completed', 'Cancelled'];
+const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
 
 const maintenanceSchema = new mongoose.Schema(
   {
@@ -17,19 +14,28 @@ const maintenanceSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['Repair', 'Scheduled Service', 'Inspection', 'Upgrade', 'Other'],
+      enum: TYPES,
       default: 'Repair',
     },
-    title: { type: String, required: true, trim: true }, // e.g. "Screen replacement"
+    title: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
-    vendor: { type: String, trim: true }, // service provider / internal team
+    vendor: { type: String, trim: true },
     cost: { type: Number, min: 0 },
+    priority: {
+      type: String,
+      enum: PRIORITIES,
+      default: 'Medium',
+      index: true,
+    },
+    assignee: { type: String, trim: true },
+    team: { type: String, trim: true },
+    recurring: { type: Boolean, default: false },
     startDate: { type: Date, default: Date.now, required: true },
-    dueDate: { type: Date }, // for Scheduled/Inspection types
+    dueDate: { type: Date },
     completedDate: { type: Date },
     status: {
       type: String,
-      enum: ['Open', 'Scheduled', 'In Progress', 'Completed', 'Cancelled'],
+      enum: STATUSES,
       default: 'Open',
       index: true,
     },
@@ -46,6 +52,9 @@ maintenanceSchema.methods.computeStatus = function () {
   return this.status;
 };
 
-maintenanceSchema.index({ title: 'text', vendor: 'text' });
+maintenanceSchema.index({ title: 'text', vendor: 'text', assignee: 'text', team: 'text' });
 
 module.exports = mongoose.model('Maintenance', maintenanceSchema);
+module.exports.TYPES = TYPES;
+module.exports.STATUSES = STATUSES;
+module.exports.PRIORITIES = PRIORITIES;
